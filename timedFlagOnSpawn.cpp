@@ -32,7 +32,7 @@ const std::string PLUGIN_NAME = "Timed Flag On Spawn";
 const int MAJOR = 1;
 const int MINOR = 0;
 const int REV = 0;
-const int BUILD = 0;
+const int BUILD = 1;
 
 class timedFlagOnSpawn : public bz_Plugin
 {
@@ -129,7 +129,7 @@ void timedFlagOnSpawn::Event (bz_EventData* eventData)
 
             bool success = bz_givePlayerFlag(spawnData->playerID, flag.flag.c_str(), true);
 
-            if (success)
+            if (success && flag.delay > 0)
             {
                 flagsGiven[spawnData->playerID].givenAt = bz_getCurrentTime();
                 flagsGiven[spawnData->playerID].flagID = bz_getPlayerFlagID(spawnData->playerID);
