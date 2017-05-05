@@ -42,8 +42,6 @@ public:
     virtual void Cleanup ();
     virtual void Event (bz_EventData* eventData);
 
-    virtual void checkPlayerFlag (int playerID);
-
     struct FlagDefinition
     {
         std::string flag;
@@ -65,6 +63,7 @@ private:
             expired(true) {}
     };
 
+    virtual void checkPlayerFlag (int playerID);
     virtual void parseFlagListDefinition (const char* configuration);
     virtual void tryParseFlagDefinition (std::string definition);
     virtual FlagDefinition parseFlagDefinition (const char* definition);
