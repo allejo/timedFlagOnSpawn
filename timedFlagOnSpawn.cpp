@@ -32,7 +32,7 @@ const std::string PLUGIN_NAME = "Timed Flag On Spawn";
 const int MAJOR = 1;
 const int MINOR = 0;
 const int REV = 0;
-const int BUILD = 1;
+const int BUILD = 3;
 
 class timedFlagOnSpawn : public bz_Plugin
 {
@@ -86,6 +86,7 @@ const char* timedFlagOnSpawn::Name ()
 
 void timedFlagOnSpawn::Init (const char* config)
 {
+    Register(bz_eFlagDroppedEvent);
     Register(bz_ePlayerJoinEvent);
     Register(bz_ePlayerSpawnEvent);
     Register(bz_eTickEvent);
@@ -107,6 +108,14 @@ void timedFlagOnSpawn::Event (bz_EventData* eventData)
 {
     switch (eventData->eventType)
     {
+        case bz_eFlagDroppedEvent:
+        {
+            bz_FlagDroppedEventData_V1 *dropData = (bz_FlagDroppedEventData_V1*)eventData;
+
+            flagsGiven[dropData->playerID].expired = true;
+        }
+        break;
+
         case bz_ePlayerJoinEvent:
         {
             bz_PlayerJoinPartEventData_V1 *joinData = (bz_PlayerJoinPartEventData_V1*)eventData;
@@ -127,11 +136,16 @@ void timedFlagOnSpawn::Event (bz_EventData* eventData)
             FlagDefinition flag = *bztk_select_randomly(flagDefinitions.begin(), flagDefinitions.end());
 
             bool success = bz_givePlayerFlag(spawnData->playerID, flag.flag.c_str(), true);
+            int flagID = bz_getPlayerFlagID(spawnData->playerID);
+
+            bz_debugMessagef(4, "DEBUG :: timedFlagOnSpawn :: player %d was given the %s flag (%d) %s",
+                                    spawnData->playerID, flag.flag.c_str(), flagID,
+                                    (flag.delay > 0) ? bz_format("for %d seconds", flag.delay) : "indefinitely");
 
             if (success && flag.delay > 0)
             {
                 flagsGiven[spawnData->playerID].givenAt = bz_getCurrentTime();
-                flagsGiven[spawnData->playerID].flagID = bz_getPlayerFlagID(spawnData->playerID);
+                flagsGiven[spawnData->playerID].flagID = flagID;
                 flagsGiven[spawnData->playerID].delay = flag.delay;
                 flagsGiven[spawnData->playerID].expired = false;
             }
@@ -155,6 +169,14 @@ void timedFlagOnSpawn::Event (bz_EventData* eventData)
 
 void timedFlagOnSpawn::checkPlayerFlag (int playerID)
 {
+    std::shared_ptr<bz_BasePlayerRecord> pr(bz_getPlayerByIndex(playerID));
+
+    // Don't bother doing any checks if the player isn't alive
+    if (pr->lastKnownState.status != eAlive)
+    {
+        return;
+    }
+
     FlagStatus &status = flagsGiven[playerID];
 
     if (status.expired)
@@ -163,16 +185,11 @@ void timedFlagOnSpawn::checkPlayerFlag (int playerID)
     }
 
     bool timesUp = (status.givenAt + status.delay < bz_getCurrentTime());
-    bool sameFlag = (status.flagID == bz_getPlayerFlagID(playerID));
+    bool sameFlag = (status.flagID == pr->currentFlagID);
 
     if (timesUp && sameFlag)
     {
         bz_removePlayerFlag(playerID);
-    }
-
-    if (timesUp || !sameFlag)
-    {
-        status.expired = true;
     }
 }
 
