@@ -31,8 +31,10 @@ const std::string PLUGIN_NAME = "Timed Flag On Spawn";
 // Define plug-in version numbering
 const int MAJOR = 1;
 const int MINOR = 0;
-const int REV = 0;
-const int BUILD = 3;
+const int REV = 1;
+const int BUILD = 6;
+
+const int VERBOSE_LVL = 0;
 
 class timedFlagOnSpawn : public bz_Plugin
 {
@@ -54,13 +56,13 @@ private:
         int flagID;
         int delay;
         double givenAt;
-        bool expired;
+        bool needsToBeTaken;
 
         FlagStatus() :
             flagID(-1),
             delay(0),
             givenAt(0),
-            expired(true) {}
+            needsToBeTaken(false) {}
     };
 
     virtual void checkPlayerFlag (int playerID);
@@ -89,7 +91,7 @@ void timedFlagOnSpawn::Init (const char* config)
     Register(bz_eFlagDroppedEvent);
     Register(bz_ePlayerJoinEvent);
     Register(bz_ePlayerSpawnEvent);
-    Register(bz_eTickEvent);
+    Register(bz_ePlayerUpdateEvent);
 
     parseFlagListDefinition(config);
 
@@ -112,7 +114,7 @@ void timedFlagOnSpawn::Event (bz_EventData* eventData)
         {
             bz_FlagDroppedEventData_V1 *dropData = (bz_FlagDroppedEventData_V1*)eventData;
 
-            flagsGiven[dropData->playerID].expired = true;
+            flagsGiven[dropData->playerID].needsToBeTaken = false;
         }
         break;
 
@@ -135,30 +137,28 @@ void timedFlagOnSpawn::Event (bz_EventData* eventData)
 
             FlagDefinition flag = *bztk_select_randomly(flagDefinitions.begin(), flagDefinitions.end());
 
-            bool success = bz_givePlayerFlag(spawnData->playerID, flag.flag.c_str(), true);
+            bz_givePlayerFlag(spawnData->playerID, flag.flag.c_str(), true);
+
             int flagID = bz_getPlayerFlagID(spawnData->playerID);
 
-            bz_debugMessagef(4, "DEBUG :: timedFlagOnSpawn :: player %d was given the %s flag (%d) %s",
-                                    spawnData->playerID, flag.flag.c_str(), flagID,
-                                    (flag.delay > 0) ? bz_format("for %d seconds", flag.delay) : "indefinitely");
+            flagsGiven[spawnData->playerID].needsToBeTaken = (flag.delay > 0);
+            flagsGiven[spawnData->playerID].givenAt = bz_getCurrentTime();
+            flagsGiven[spawnData->playerID].flagID = flagID;
+            flagsGiven[spawnData->playerID].delay = flag.delay;
 
-            if (success && flag.delay > 0)
-            {
-                flagsGiven[spawnData->playerID].givenAt = bz_getCurrentTime();
-                flagsGiven[spawnData->playerID].flagID = flagID;
-                flagsGiven[spawnData->playerID].delay = flag.delay;
-                flagsGiven[spawnData->playerID].expired = false;
-            }
+            bz_debugMessagef(VERBOSE_LVL, "DEBUG :: timedFlagOnSpawn :: player %d was given the %s flag (%d) %s",
+                             spawnData->playerID, flag.flag.c_str(), flagID,
+                             (flag.delay > 0) ? bz_format("for %d seconds", flag.delay) : "indefinitely");
         }
         break;
 
-        case bz_eTickEvent:
+        case bz_ePlayerUpdateEvent:
         {
-            std::shared_ptr<bz_APIIntList> playerList(bz_getPlayerIndexList());
+            bz_PlayerUpdateEventData_V1 *updateData = (bz_PlayerUpdateEventData_V1*)eventData;
 
-            for (unsigned int i = 0; i < playerList->size(); i++)
+            if (updateData->state.status == eAlive)
             {
-                checkPlayerFlag(playerList->get(i));
+                checkPlayerFlag(updateData->playerID);
             }
         }
         break;
@@ -169,27 +169,26 @@ void timedFlagOnSpawn::Event (bz_EventData* eventData)
 
 void timedFlagOnSpawn::checkPlayerFlag (int playerID)
 {
-    std::shared_ptr<bz_BasePlayerRecord> pr(bz_getPlayerByIndex(playerID));
-
-    // Don't bother doing any checks if the player isn't alive
-    if (pr->lastKnownState.status != eAlive)
-    {
-        return;
-    }
-
     FlagStatus &status = flagsGiven[playerID];
 
-    if (status.expired)
+    if (!status.needsToBeTaken)
     {
         return;
     }
 
     bool timesUp = (status.givenAt + status.delay < bz_getCurrentTime());
-    bool sameFlag = (status.flagID == pr->currentFlagID);
+    bool sameFlag = (status.flagID == bz_getPlayerFlagID(playerID));
 
     if (timesUp && sameFlag)
     {
         bz_removePlayerFlag(playerID);
+
+        status.needsToBeTaken = false;
+
+        bz_debugMessagef(VERBOSE_LVL, "DEBUG :: timedFlagOnSpawn :: player %d's flag was taken", playerID);
+        bz_debugMessagef(VERBOSE_LVL, "DEBUG :: timedFlagOnSpawn ::     current time: %.0f", bz_getCurrentTime());
+        bz_debugMessagef(VERBOSE_LVL, "DEBUG :: timedFlagOnSpawn ::     given at: %.0f", status.givenAt);
+        bz_debugMessagef(VERBOSE_LVL, "DEBUG :: timedFlagOnSpawn ::     delay: %d", status.delay);
     }
 }
 
@@ -251,6 +250,8 @@ timedFlagOnSpawn::FlagDefinition timedFlagOnSpawn::parseFlagDefinition (const ch
     FlagDefinition flagDef;
     flagDef.flag = def[0];
     flagDef.delay = std::stoi(def[1]);
+
+    bz_debugMessagef(VERBOSE_LVL, "DEBUG :: timedFlagOnSpawn :: Flag Definition parsed as %s flag will be given for %d seconds", flagDef.flag.c_str(), flagDef.delay);
 
     return flagDef;
 }
