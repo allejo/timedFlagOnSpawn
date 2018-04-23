@@ -32,9 +32,9 @@ const std::string PLUGIN_NAME = "Timed Flag On Spawn";
 const int MAJOR = 1;
 const int MINOR = 0;
 const int REV = 1;
-const int BUILD = 6;
+const int BUILD = 7;
 
-const int VERBOSE_LVL = 0;
+const int VERBOSE_LVL = 4;
 
 class timedFlagOnSpawn : public bz_Plugin
 {
@@ -81,7 +81,9 @@ const char* timedFlagOnSpawn::Name ()
     static std::string pluginName;
 
     if (pluginName.empty())
-        pluginName = bztk_pluginName(PLUGIN_NAME, MAJOR, MINOR, REV, BUILD);
+    {
+        pluginName = bz_format("%s %d.%d.%d (%d)", PLUGIN_NAME.c_str(), MAJOR, MINOR, REV, BUILD);
+    }
 
     return pluginName.c_str();
 }
